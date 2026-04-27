@@ -35,5 +35,9 @@ module.exports = withMercur({
         disable: true
       }
     },
+    // 香港炒賣 MVP 自定義模組：AI 推薦炒賣品
+    {
+      resolve: './src/modules/flip-listing',
+    },
   ],
 })
