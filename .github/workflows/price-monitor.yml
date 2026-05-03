@@ -1,0 +1,61 @@
+name: Carousell Price Monitor
+
+on:
+  schedule:
+    # Run every day at 09:00 HKT (01:00 UTC)
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+    inputs:
+      keyword:
+        description: 'Product keyword to search'
+        required: false
+        default: 'SK-II 神仙水'
+      max_results:
+        description: 'Max number of results'
+        required: false
+        default: '20'
+
+jobs:
+  monitor:
+    name: Fetch Carousell Prices
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install ts-node & typescript
+        run: npm install -g ts-node typescript @types/node
+
+      - name: Run Carousell scraper
+        id: scrape
+        run: |
+          KEYWORD="${{ github.event.inputs.keyword || 'SK-II 神仙水' }}"
+          MAX="${{ github.event.inputs.max_results || '20' }}"
+          echo "Scraping: $KEYWORD (max $MAX results)"
+          ts-node tools/carousell-scraper/index.ts "$KEYWORD" "$MAX" > price-report.json
+          echo "Results saved to price-report.json"
+          cat price-report.json
+
+      - name: Upload price report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: price-report-${{ github.run_number }}
+          path: price-report.json
+          retention-days: 30
+
+      - name: Check for price drops (optional alert)
+        run: |
+          MIN_PRICE=$(cat price-report.json | node -e "
+            const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+            const prices = data.map(l => l.price).filter(p => p > 0);
+            console.log(prices.length ? Math.min(...prices) : 'N/A');
+          ")
+          echo "Lowest price found: HKD $MIN_PRICE"
+          echo "min_price=$MIN_PRICE" >> $GITHUB_OUTPUT
